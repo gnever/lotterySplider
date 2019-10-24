@@ -1,39 +1,58 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
 	"strconv"
 	"time"
 
 	"github.com/gogf/gf/container/gmap"
+	"github.com/gogf/gf/frame/g"
 	"github.com/gogf/gf/net/ghttp"
+	"github.com/gogf/gf/os/gfile"
 	"github.com/gogf/gf/os/glog"
 	"github.com/gogf/gf/text/gregex"
 	"github.com/gogf/gf/util/gutil"
 )
 
 type twoColorBall struct {
-	No    int
-	Red1  int
-	Red2  int
-	Red3  int
-	Red4  int
-	Red5  int
-	Red6  int
-	Blue1 int
-	Date  string
+	No       int    `orm:"no"`
+	Red1     int    `orm:"red1"`
+	Red2     int    `orm:"red2"`
+	Red3     int    `orm:"red3"`
+	Red4     int    `orm:"red4"`
+	Red5     int    `orm:"red5"`
+	Red6     int    `orm:"red6"`
+	Blue1    int    `orm:"blue1"`
+	Date     string `orm:"date"`
+	CreateTS int64  `orm:"create_ts"`
 }
 
 var (
 	l         *glog.Logger
 	currentNo int
 	curlStop  bool //数据库内最大的彩票期号 >= 抓取的彩票期号 则不用再抓取
+	outFile   string
 )
+
+func init() {
+	flag.StringVar(&outFile, "o", "", "输出目标文件")
+	flag.Parse()
+}
 
 func main() {
 
 	l = glog.New().Line(true)
+
+	db := g.DB()
+
+	one, err := db.GetOne("select no from two_color_ball order by no desc limit 1")
+
+	if err == nil {
+		currentNo = one.Map()["no"].(int)
+		l.Infof("数据库内最新数据为 %d 期", currentNo)
+	}
 
 	client := ghttp.NewClient()
 	client.SetHeader("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.120 Safari/537.36")
@@ -62,6 +81,8 @@ func main() {
 	for i := 1; i <= pages; i++ {
 		var content string
 
+		l.Infof("正在抓取第 %d 页", i)
+
 		//第一页已经取了，不用再处理
 		if i == 1 {
 			content = ct
@@ -75,7 +96,7 @@ func main() {
 			url := fmt.Sprintf("http://kaijiang.zhcw.com/zhcw/html/ssq/list_%d.html", i)
 			response, err := client.Get(url)
 			if err != nil {
-				l.Errorf("抓取 %s 失败", url)
+				l.Infof("抓取 %s 失败", url)
 			}
 			ct := response.ReadAllString()
 			response.Close()
@@ -85,14 +106,29 @@ func main() {
 	}
 
 	if treeMap.Size() == 0 {
-		l.Error("未抓取到数据")
+		l.Info("没有需要处理的数据")
 		return
 	}
 
 	for _, v := range treeMap.Values() {
 		vv := v.(*twoColorBall)
-		l.Infof("写入 ： %s--%d %d %d %d %d %d %d  %d\n", vv.Date, vv.No, vv.Red1, vv.Red2, vv.Red3, vv.Red4, vv.Red5, vv.Red6, vv.Blue1)
+
+		_line := fmt.Sprintf("%d,%s,%d,%d,%d,%d,%d,%d,%d\n", vv.No, vv.Date, vv.Red1, vv.Red2, vv.Red3, vv.Red4, vv.Red5, vv.Red6, vv.Blue1)
+
+		l.Debugf("写入 ： %s", _line)
+
+		if outFile != "" {
+			gfile.PutContentsAppend(outFile, _line)
+		}
+
+		vv.CreateTS = time.Now().Unix()
+		_, err := db.Table("two_color_ball").Data(vv).Insert()
+		if err != nil {
+			l.Errorf("插入失败 err: %s", err)
+		}
+
 	}
+
 }
 
 func parseHTML(content string, treeMap *gmap.TreeMap) (err error) {
@@ -119,7 +155,7 @@ func parseHTML(content string, treeMap *gmap.TreeMap) (err error) {
 			return nil
 		}
 
-		l.Infof("抓取到 ： %s--%d %d %d %d %d %d %d  %d\n", _twoColorBall.Date, _twoColorBall.No, _twoColorBall.Red1, _twoColorBall.Red2, _twoColorBall.Red3, _twoColorBall.Red4, _twoColorBall.Red5, _twoColorBall.Red6, _twoColorBall.Blue1)
+		//l.Debugf("抓取到 ： %s--%d %d %d %d %d %d %d  %d\n", _twoColorBall.Date, _twoColorBall.No, _twoColorBall.Red1, _twoColorBall.Red2, _twoColorBall.Red3, _twoColorBall.Red4, _twoColorBall.Red5, _twoColorBall.Red6, _twoColorBall.Blue1)
 
 		treeMap.Set(arr[2], _twoColorBall)
 	}
