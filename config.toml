@@ -1,0 +1,12 @@
+[database]
+    [[database.default]]
+        host         = "127.0.0.1"
+        port         = "3306"
+        user         = "dbuser"
+        pass         = "OfsBfzZ0BTctIQfM"
+        name         = "data"
+        type         = "mysql"
+        charset      = "utf8"
+        maxIdle      = "1"
+        maxOpen      = "2"
+        maxLifetime  = "360"
